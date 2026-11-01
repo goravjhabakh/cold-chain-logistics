@@ -1,34 +1,21 @@
 import logging
 import math
-import os
 from pathlib import Path
 
 import requests
-from dotenv import load_dotenv
 from langchain_core.tools import tool
 from openai import OpenAI
 from sqlalchemy import create_engine, text
 
-# ---------------------------------------------------------
-# Configuration
-# ---------------------------------------------------------
+from src.config import AGENT_DATABASE_URL, EMBEDDING_MODEL, OPENAI_API_KEY
 
 logger = logging.getLogger(__name__)
 
+embedding_dimensions = 1536
+
+
 src_dir = Path(__file__).resolve().parent
 project_root = src_dir.parent
-
-load_dotenv(project_root / ".env")
-
-agent_database_url = os.environ["AGENT_DATABASE_URL"]
-openai_api_key = os.environ["OPENAI_API_KEY"]
-
-embedding_model_name = os.getenv(
-    "EMBEDDING_MODEL",
-    "text-embedding-3-small",
-)
-
-embedding_dimensions = 1536
 
 MAX_TELEMETRY_LIMIT = 100
 MAX_SOP_LIMIT = 10
@@ -36,8 +23,8 @@ MAX_RADIUS_DEGREES = 5.0
 MIN_TEMPERATURE_THRESHOLD_C = -30.0
 MAX_TEMPERATURE_THRESHOLD_C = 30.0
 
-engine = create_engine(agent_database_url)
-openai_client = OpenAI(api_key=openai_api_key)
+engine = create_engine(AGENT_DATABASE_URL)
+openai_client = OpenAI(api_key=OPENAI_API_KEY)
 
 
 # ---------------------------------------------------------
@@ -72,7 +59,7 @@ def validate_coordinates(latitude: float, longitude: float) -> str | None:
 
 def generate_query_embedding(query: str) -> list[float]:
     response = openai_client.embeddings.create(
-        model=embedding_model_name,
+        model=EMBEDDING_MODEL,
         input=query,
         dimensions=embedding_dimensions,
         encoding_format="float",

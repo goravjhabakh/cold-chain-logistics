@@ -1,5 +1,4 @@
 import logging
-import os
 import sys
 import uuid
 from pathlib import Path
@@ -7,7 +6,6 @@ from typing import Any
 
 import pandas as pd
 import streamlit as st
-from dotenv import load_dotenv
 from langchain_core.messages import HumanMessage, ToolMessage
 from sqlalchemy import create_engine
 
@@ -17,13 +15,12 @@ project_root = src_dir.parent
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
-load_dotenv(project_root / ".env")
 
 from src.audit import write_audit_log  # noqa: E402
-from src.orchestrator import agent, agent_model, load_system_prompt  # noqa: E402
+from src.config import AGENT_MODEL, DATABASE_URL  # noqa: E402
+from src.orchestrator import agent, load_system_prompt  # noqa: E402
 
 logger = logging.getLogger(__name__)
-admin_database_url = os.environ["DATABASE_URL"]
 AGENT_FAILURE_MESSAGE = "The assistant could not complete that request. Please try again."
 
 
@@ -82,7 +79,7 @@ with st.sidebar:
     st.header("Control center")
     page = st.radio("View", ["Dispatch Console", "Audit Logs"])
     st.divider()
-    st.caption(f"Model: `{agent_model}`")
+    st.caption(f"Model: `{AGENT_MODEL}`")
     st.caption(f"Session: `{st.session_state.thread_id[:8]}...`")
     st.button(
         "New session",
@@ -225,7 +222,7 @@ elif page == "Audit Logs":
             ORDER BY created_at DESC
             LIMIT 500
         """
-        with get_admin_engine(admin_database_url).connect() as connection:
+        with get_admin_engine(DATABASE_URL).connect() as connection:
             audit_logs = pd.read_sql(query, connection)
 
         if audit_logs.empty:

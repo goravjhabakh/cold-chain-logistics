@@ -1,18 +1,14 @@
 import json
 import logging
-import os
 from typing import Any
 
-from dotenv import load_dotenv
 from sqlalchemy import create_engine, text
 
-load_dotenv()
+from src.config import AGENT_DATABASE_URL
 
 logger = logging.getLogger(__name__)
 
-agent_database_url = os.environ["AGENT_DATABASE_URL"]
-
-engine = create_engine(agent_database_url)
+engine = create_engine(AGENT_DATABASE_URL)
 
 
 def build_audit_payload(content: Any) -> Any:
