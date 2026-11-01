@@ -35,3 +35,6 @@ select = ["E4", "E7", "E9", "F", "I"]
 quote-style = "double"
 indent-style = "space"
 line-ending = "auto"
+
+[tool.poetry]
+package-mode = false
