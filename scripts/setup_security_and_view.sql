@@ -31,7 +31,7 @@ BEGIN
     ) THEN
         CREATE ROLE cold_chain_agent
             LOGIN
-            PASSWORD 'change-me-in-local-env';
+            PASSWORD 'cold_chain_agent';
     END IF;
 END
 $$;
