@@ -1,3 +1,4 @@
+import logging
 import os
 from pathlib import Path
 from typing import Annotated, TypedDict
@@ -21,6 +22,8 @@ from src.agent_tools import (
 # ---------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------
+
+logger = logging.getLogger(__name__)
 
 src_dir = Path(__file__).resolve().parent
 project_root = src_dir.parent
@@ -76,6 +79,13 @@ def reasoning_node(state: AgentState) -> AgentState:
     }
 
 
+def handle_tool_error(error: Exception) -> str:
+    """Keep unexpected tool errors recoverable without exposing diagnostics to users."""
+
+    logger.error("Unexpected tool execution error", exc_info=error)
+    return "The requested operational data could not be retrieved. Please try again."
+
+
 # ---------------------------------------------------------
 # Graph
 # ---------------------------------------------------------
@@ -89,7 +99,7 @@ graph_builder.add_node(
 
 graph_builder.add_node(
     "tools",
-    ToolNode(tools),
+    ToolNode(tools, handle_tool_errors=handle_tool_error),
 )
 
 graph_builder.add_edge(

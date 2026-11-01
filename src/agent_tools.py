@@ -1,3 +1,5 @@
+import logging
+import math
 import os
 from pathlib import Path
 
@@ -10,6 +12,8 @@ from sqlalchemy import create_engine, text
 # ---------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------
+
+logger = logging.getLogger(__name__)
 
 src_dir = Path(__file__).resolve().parent
 project_root = src_dir.parent
@@ -26,6 +30,12 @@ embedding_model_name = os.getenv(
 
 embedding_dimensions = 1536
 
+MAX_TELEMETRY_LIMIT = 100
+MAX_SOP_LIMIT = 10
+MAX_RADIUS_DEGREES = 5.0
+MIN_TEMPERATURE_THRESHOLD_C = -30.0
+MAX_TEMPERATURE_THRESHOLD_C = 30.0
+
 engine = create_engine(agent_database_url)
 openai_client = OpenAI(api_key=openai_api_key)
 
@@ -40,6 +50,24 @@ def format_rows(rows: list[dict]) -> str:
         return "No matching shipments found."
 
     return "\n".join(str(row) for row in rows)
+
+
+def validate_limit(limit: int, maximum: int) -> str | None:
+    """Return a safe validation message for a database result limit."""
+
+    if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= maximum:
+        return f"Limit must be an integer between 1 and {maximum}."
+    return None
+
+
+def validate_coordinates(latitude: float, longitude: float) -> str | None:
+    """Validate geographic coordinates before calling a data source."""
+
+    if not math.isfinite(latitude) or not -90 <= latitude <= 90:
+        return "Latitude must be a finite value between -90 and 90."
+    if not math.isfinite(longitude) or not -180 <= longitude <= 180:
+        return "Longitude must be a finite value between -180 and 180."
+    return None
 
 
 def generate_query_embedding(query: str) -> list[float]:
@@ -75,6 +103,19 @@ def find_shipments_near(
     not an exact physical distance.
     """
 
+    coordinate_error = validate_coordinates(latitude, longitude)
+    if coordinate_error:
+        return coordinate_error
+
+    limit_error = validate_limit(limit, MAX_TELEMETRY_LIMIT)
+    if limit_error:
+        return limit_error
+
+    if not math.isfinite(radius_degrees) or not 0 < radius_degrees <= MAX_RADIUS_DEGREES:
+        return (
+            f"Radius must be a finite value greater than 0 and no more than {MAX_RADIUS_DEGREES}."
+        )
+
     query = text(
         """
         SELECT
@@ -109,8 +150,9 @@ def find_shipments_near(
 
         return format_rows([dict(row) for row in rows])
 
-    except Exception as exc:
-        return f"Telemetry database error: {exc}"
+    except Exception:
+        logger.exception("Nearby-shipment telemetry query failed")
+        return "Telemetry data could not be retrieved. Please try again."
 
 
 @tool
@@ -121,6 +163,10 @@ def get_high_risk_shipments(limit: int = 10) -> str:
     Use this when the user asks about risky shipments,
     escalations, or shipments requiring attention.
     """
+
+    limit_error = validate_limit(limit, MAX_TELEMETRY_LIMIT)
+    if limit_error:
+        return limit_error
 
     query = text(
         """
@@ -154,8 +200,9 @@ def get_high_risk_shipments(limit: int = 10) -> str:
 
         return format_rows([dict(row) for row in rows])
 
-    except Exception as exc:
-        return f"Telemetry database error: {exc}"
+    except Exception:
+        logger.exception("High-risk shipment telemetry query failed")
+        return "Telemetry data could not be retrieved. Please try again."
 
 
 @tool
@@ -170,6 +217,19 @@ def get_temperature_breaches(
     The default threshold is 4°C, but SOP retrieval should be
     used when the correct compliance threshold must be confirmed.
     """
+
+    limit_error = validate_limit(limit, MAX_TELEMETRY_LIMIT)
+    if limit_error:
+        return limit_error
+
+    if (
+        not math.isfinite(threshold_c)
+        or not MIN_TEMPERATURE_THRESHOLD_C <= threshold_c <= MAX_TEMPERATURE_THRESHOLD_C
+    ):
+        return (
+            "Temperature threshold must be a finite value between "
+            f"{MIN_TEMPERATURE_THRESHOLD_C} and {MAX_TEMPERATURE_THRESHOLD_C} °C."
+        )
 
     query = text(
         """
@@ -204,8 +264,9 @@ def get_temperature_breaches(
 
         return format_rows([dict(row) for row in rows])
 
-    except Exception as exc:
-        return f"Telemetry database error: {exc}"
+    except Exception:
+        logger.exception("Temperature-breach telemetry query failed")
+        return "Telemetry data could not be retrieved. Please try again."
 
 
 # ---------------------------------------------------------
@@ -224,6 +285,10 @@ def search_compliance_sop(
     Use this for compliance thresholds, escalation rules,
     mitigation procedures, rerouting policies, and cargo handling guidance.
     """
+
+    limit_error = validate_limit(limit, MAX_SOP_LIMIT)
+    if limit_error:
+        return limit_error
 
     try:
         embedding = generate_query_embedding(query)
@@ -276,8 +341,9 @@ def search_compliance_sop(
 
         return "\n\n---\n\n".join(results)
 
-    except Exception as exc:
-        return f"SOP retrieval error: {exc}"
+    except Exception:
+        logger.exception("SOP retrieval failed")
+        return "Compliance guidance could not be retrieved. Please try again."
 
 
 # ---------------------------------------------------------
@@ -296,6 +362,10 @@ def fetch_corridor_conditions(
     Use this when weather or environmental conditions may affect
     a shipment or transportation corridor.
     """
+
+    coordinate_error = validate_coordinates(latitude, longitude)
+    if coordinate_error:
+        return coordinate_error
 
     try:
         response = requests.get(
@@ -321,8 +391,9 @@ def fetch_corridor_conditions(
             f"Weather code: {current.get('weather_code', 'N/A')}"
         )
 
-    except requests.RequestException as exc:
-        return f"Weather API error: {exc}"
+    except requests.RequestException:
+        logger.exception("Weather request failed")
+        return "Weather conditions could not be retrieved. Please try again."
 
 
 # ---------------------------------------------------------

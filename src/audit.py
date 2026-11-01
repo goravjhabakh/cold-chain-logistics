@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 from typing import Any
 
@@ -7,9 +8,17 @@ from sqlalchemy import create_engine, text
 
 load_dotenv()
 
+logger = logging.getLogger(__name__)
+
 agent_database_url = os.environ["AGENT_DATABASE_URL"]
 
 engine = create_engine(agent_database_url)
+
+
+def build_audit_payload(content: Any) -> Any:
+    """Normalize text audit content without changing structured payloads."""
+
+    return {"message": content} if isinstance(content, str) else content
 
 
 def write_audit_log(
@@ -25,10 +34,7 @@ def write_audit_log(
     do not break the dispatcher workflow.
     """
 
-    if isinstance(content, str):
-        payload = {"message": content}
-    else:
-        payload = content
+    payload = build_audit_payload(content)
 
     query = text(
         """
@@ -59,8 +65,8 @@ def write_audit_log(
                 },
             )
 
-    except Exception as exc:
-        print(f"Audit logging failed: {exc}")
+    except Exception:
+        logger.exception("Audit logging failed")
 
 
 if __name__ == "__main__":
